@@ -1,353 +1,335 @@
-
-USE Super_Store
-
-/*-------------------------------------------------------------------------------------------------*/
-/*------------------------------ ADDING DATE RELATED COLUMNS --------------------------------------*/
-/*-------------------------------------------------------------------------------------------------*/
-
-
--- Adding Date related columns
-ALTER TABLE Stores
-ADD MonthName	NVARCHAR(30) NULL, 
-    MonthNo		TINYINT NULL,
-    QuarterNo	NVARCHAR(5) NULL,
-    Year		SMALLINT NULL;
-
-
-/*-------------------------------------------------------------------------------------------------*/
+/* ============================================================
+    Project: E-Commerce Sales Optimization
+    File: 02_exploratory_data_analysis.sql
+    Author: Bryan Melvida
+   
+    Purpose:
+    - Analyze demand concentration and regional contribution
+    - Identify growth signals and opportunity gaps
+    - Evaluate product demand and mix performance
+    - Assess pricing and discount sensitivity
+    - Examine fulfillment and cost impact on demand
+    - Evaluate segment demand and contribution
+   ============================================================ */
 
 
--- Inspecting Result before populating the table
-SELECT
-    TOP 5 LEFT(DATENAME(MONTH,OrderDate),3) AS MonthName,
-    MONTH(OrderDate) AS MonthNo,
-    CONCAT('Q', DATEPART(QUARTER,OrderDate)) AS QuarterNo,
-    YEAR(Orderdate) AS Year
-FROM
-    Stores;
+USE global_store_sales
 
 
-/*-------------------------------------------------------------------------------------------------*/
+/* ============================================================
+    DEMAND CONCENTRATION & MARKET SHARE CONTRIBUTION
+   ------------------------------------------------------------
+    - Assess how demand and revenue are distributed across markets
+   ============================================================ */
 
-
--- Populating the columns.
-BEGIN TRAN
-UPDATE Stores
-SET 
-    MonthName = LEFT(DATENAME(MONTH, OrderDate), 3),
-    QuarterNo = CONCAT('Q', DATEPART(QUARTER,OrderDate)),
-    MonthNo = MONTH(OrderDate),
-    Year = YEAR(OrderDate)
-WHERE
-    OrderDate IS NOT NULL;
-
---ROLLBACK;
---COMMIT;
-
-
-/*-------------------------------------------------------------------------------------------------*/
-
-
--- Checking Result
-SELECT
-    TOP 5 *
-FROM
-    Stores;
-
-
-/*-------------------------------------------------------------------------------------------------*/
-/*------------------------------------- DATA EXPLORATION ------------------------------------------*/
-/*-------------------------------------------------------------------------------------------------*/
-
-
-/** Calculate Yearly sales, orders, Profit margin, and YoY sales increase **/
-
-SELECT
-    Year,
-    FORMAT(SUM(Sales), 'N0') AS TotalSales,
-    FORMAT(COUNT(Segment), 'N0') AS TotalOrders,
-    FORMAT(SUM(Profit)/ SUM(Sales), 'P2') AS ProfitMargin,
-    FORMAT(
-        (SUM(Sales) - LAG(SUM(Sales)) OVER(ORDER BY Year)) / LAG(SUM(Sales)) OVER(ORDER BY Year)
-        , 'P2') AS YoYSalesIncrease
-FROM
-    Stores
-GROUP BY
-    Year
-ORDER BY
-    Year DESC;
-
-
-/*-------------------------------------------------------------------------------------------------*/
-
-
-/** Calculates quarterly and monthly sales and orders totals to identify trends **/
-
-SELECT
-    QuarterNo,
-    MonthName,
-    FORMAT(SUM(Sales), 'N0') AS TotalSales,
-    FORMAT(COUNT(Segment), 'N0') AS TotalOrders
-FROM
-    Stores
-GROUP BY
-    QuarterNo,
-    MonthNo,
-    MonthName
-ORDER BY
-    MonthNo;
-
-
-/*-------------------------------------------------------------------------------------------------*/
-
-
-/** Analyzes market performance by average sales, and order volume  **/
-
-SELECT
-    COUNT(DISTINCT Country) AS CountryCount,
-    Market,
-    FORMAT(AVG(Sales), 'N0') AS AvgSales,
-    FORMAT(COUNT(Market), 'N0') AS TotalOrder
-FROM
-    Stores
-GROUP BY
-    Market
-ORDER BY
-    CountryCount; 
-
-
-/*-------------------------------------------------------------------------------------------------*/
-
-/** Calculates Market's Segments Total Sales Distribution **/
-
-SELECT
-    Market,
-    FORMAT(Consumer, 'N0') AS ConsumerSales,
-    FORMAT(Corporate, 'N0') AS CorporateSales,
-    FORMAT([Home Office], 'N0') AS HomeOfficeSales
-FROM
-    (
+-- Market-level demand concentration metrics
+WITH MarketPerformance AS (
     SELECT
         Market,
-        Segment,
-        Sales
-    FROM
-        Stores
-        ) AS TableSource
-            PIVOT
-        (
-            SUM(Sales)						-- Creates 3 columns that represents 
-            FOR Segment						-- each segments total sales
-            IN ([Consumer], [Corporate], [Home Office])
-        ) AS PivoTable
-
-
-/*-------------------------------------------------------------------------------------------------*/
-
-
-/** Analyzes Total Orders, Sales for each segments and Average Sales per order **/
-
-SELECT
-    Segment,
-    FORMAT(COUNT(Segment), 'N0') AS TotalOrders,
-    FORMAT(SUM(Sales), 'N0') AS TotalSales,
-    ROUND(CAST(AVG(Sales) AS FLOAT),2) AS AvgSales
-FROM
-    Stores
-GROUP BY
-    Segment
-ORDER BY
-    Segment;
-
-
-/*-------------------------------------------------------------------------------------------------*/
-
-
-/** Calculates Orders distribution in % for each segment, and discounted products impact **/
-
-WITH OrderDistribution AS (
-    SELECT                                                      -- Pivoted table with each segments
-        QuarterNo,                                              -- data converted to percentage
-        MonthName,
-        SUM(CAST(Consumer AS FLOAT))  / SUM(SUM(Consumer)) OVER() AS Consumer,
-        SUM(CAST(Corporate AS FLOAT)) / SUM(SUM(Corporate)) OVER()  AS Corporate,
-        SUM(CAST([Home Office] AS FLOAT)) / SUM(SUM([Home Office])) OVER() AS HomeOffice
-    FROM
-    (
-        SELECT
-            QuarterNo,
-            MonthName,
-            MonthNo,
-            ProductName,
-            Segment
-        FROM
-            Stores
-            ) AS TableSource
-                PIVOT
-            (
-                COUNT(ProductName)                              -- Count order per segment
-                FOR Segment
-                IN ([Consumer], [Corporate], [Home Office])     -- Creates 3 columns for each segments
-            ) AS PivotTable                                     -- with each having total order
-    GROUP BY
-        QuarterNo,
-        MonthName
-    ),
-MonthlyDiscounts AS (
-    SELECT
-        MonthNo,
-        MonthName,
-        SUM(CASE
-                WHEN Discount > 0.000 THEN 1                    -- 1 represents a product was sold with
-                ELSE 0                                          -- with discount. Enables to calculate
-            END) AS DiscountedProductCount                      -- total products sold with discount
-    FROM
-        Stores
-    GROUP BY
-        MonthNo,
-        MonthName
-)
-SELECT                                                          -- Formatted data for clarity
-    TD.MonthName,
-    FORMAT(TD.Consumer, 'P2') AS 'ConsumerOrder(%)',
-    FORMAT(TD.Corporate, 'P2') AS 'CorporateOrder(%)',
-    FORMAT(TD.HomeOffice, 'P2') AS 'HomeOfficeOrder(%)',
-    FORMAT(MD.DiscountedProductCount, 'N0') AS DiscountedProductCount
-FROM
-    OrderDistribution AS TD
-        JOIN
-    MonthlyDiscounts AS MD
-    ON TD.MonthName = MD.MonthName
-ORDER BY
-    TD.QuarterNo,
-    MD.MonthNo;
-
-
-/*-------------------------------------------------------------------------------------------------*/
-
-
-/** Creating a table to store a random sample, avoiding NEWID() reordering for reproducibility. **/
-
-IF OBJECT_ID('RandomSample_Sales') IS NOT NULL DROP TABLE RandomSample_Sales;
-
-CREATE TABLE RandomSample_Sales (
-    ShippingCost	DECIMAL(10,2),
-    Discount		DECIMAL(5,3),
-    Sales		DECIMAL(10,2)
+        COUNT(DISTINCT Country) AS Country_Cnt,
+        SUM(Sales) AS Total_Sales,
+        COUNT(OrderDate) AS Total_Order,
+        SUM(Sales) / NULLIF(COUNT(OrderDate), 0) AS AOV,
+        SUM(Sales) / NULLIF(SUM(SUM(Sales)) OVER(),0) AS Sales_Pct
+    FROM sales_transaction
+    GROUP BY Market
 )
 
--- Populating Random Sample Table
-INSERT INTO RandomSample_Sales (ShippingCost, Discount, Sales)
-    SELECT 
-        TOP 1000
-        ShippingCost,
-        Discount,
-        Sales
-    FROM 
-        Stores
-    ORDER BY 
-        NEWID();
-
-
--- Checking Result
-
+-- Metrics for cross-market comparison
 SELECT
-    *
-FROM
-    RandomSample_Sales;
+    Market,
+    Country_Cnt AS Country_Coverage,
+    FORMAT(Total_Sales / 1e6, 'N2') + ' M' AS Revenue_M,
+    FORMAT(Sales_Pct, 'P2') AS Market_Revenue_Pct,
+    FORMAT(Total_Order, 'N0') AS Order_Cnt,
+    FORMAT(AOV, 'N2') AS AOV,
+    FORMAT((Total_Sales / Country_Cnt) / 1e6, 'N2') + ' M' AS 'Country_Revenue(Avg)',
+    FORMAT(Total_Order / Country_Cnt, 'N0') AS 'Country_Orders(Avg)'
+FROM MarketPerformance
+ORDER BY Total_Sales DESC;
 
 
-/*-------------------------------------------------------------------------------------------------*/
 
-
-/** Creates a benchmark to filter products perfomance by SubCategory **/
-
-WITH ProductSalesInfo AS (
-    SELECT
-        Category,
-        SubCategory,
-        ProductName,
-        AVG(Sales) AS AvgSales,
-        SUM(Sales) AS TotalSales
-    FROM
-        Stores
-    GROUP BY
-        Category,
-        SubCategory,
-        ProductName
-    ),
-SubCategoryBenchmark AS (                               -- Percentiles for each Subcategory
-    SELECT                                              -- AvgSales that would serve as Benchmark
-        DISTINCT SubCategory,
-        PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY AvgSales) OVER (PARTITION BY SubCategory) AS P25,
-        PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY AvgSales) OVER (PARTITION BY SubCategory) AS P50,
-        PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY AvgSales) OVER (PARTITION BY SubCategory) AS P75
-    FROM
-        ProductSalesInfo
-)
-SELECT
-    PSI.Category,
-    PSI.SubCategory,
-    PSI.ProductName,
-    PSI.TotalSales,
-    CASE                                                -- Flag for products AvgSales performance
-        WHEN PSI.AvgSales >= SCB.P75 THEN 'High'
-        WHEN PSI.AvgSales >= SCB.P50 AND PSI.AvgSales < SCB.P75 THEN 'Moderate'
-        ELSE 'Low'
-    END AS AvgSalesPerformance
-INTO #ProductPerformance                                -- Saved into temporary table
-FROM
-    ProductSalesInfo AS PSI
-        JOIN
-    SubCategoryBenchmark AS SCB
-    ON PSI.SubCategory = SCB.SubCategory
-ORDER BY
-    PSI.Category,
-    PSI.AvgSales DESC;
-
-
-/** Calcutes Product count, Total Sales and Sales distribution in % for each Product Performance **/
-
-SELECT
-    AvgSalesPerformance,
-    COUNT(ProductName) AS ProductCount,
-    FORMAT(SUM(TotalSales), 'N0') AS TotalSales,
-    FORMAT(SUM(TotalSales)/ SUM(SUM(TotalSales)) OVER(), 'P2') AS 'SalesDistribution%'
-FROM
-    #ProductPerformance
-GROUP BY
-    AvgSalesPerformance
-ORDER BY
-    SUM(TotalSales) DESC;
-
-
-/*-------------------------------------------------------------------------------------------------*/
-
-
-/** Calculates the percentage distribution of total sales within each categories performance group **/
-
-SELECT
-    Category,                                           -- Formatted for clarity
-    FORMAT(High, 'P2') AS High,
-    FORMAT(Moderate, 'P2') AS Moderate,
-    FORMAT(Low, 'P2') AS Low
-FROM
-(
+/* ------------------------------------------------------------
+    Findings
+   ------------------------------------------------------------
+    - Revenue Concentration:
+        - APAC, EU, US, and LATAM collectively account for ~87% of total revenue.
+        - Overall performance heavily depends on these four core markets.
     
-    SELECT                                              -- Calculates Sales distribution
-        Category,                                       -- percentage for each category
-        AvgSalesPerformance,                            -- and product performance
-        SUM(TotalSales) / SUM(SUM(TotalSales)) OVER(PARTITION BY Category) AS TotalSalesPercentage
-    FROM
-        #ProductPerformance
-    GROUP BY
-        Category,
-        AvgSalesPerformance
-    )AS TableSource
-        PIVOT
-        (
-        SUM(TotalSalesPercentage)                       -- Sum of total Sales percentage
-        FOR AvgSalesPerformance	                        -- for each product performance
-        IN ([High], [Moderate], [Low])
-        )AS PivotTable;
+    - Coverage-Driven Markets:
+        - APAC, EU, and LATAM generate revenue across many countries with moderate order volumes.
+        - Growth in these markets comes from geographic breadth, not concentrated demand.
+    
+    - Demand-Dense Market:
+        - The US delivers revenue comparable to multi-country markets from a single country.
+        - Driven by high order concentration and strong per-country demand.
+    
+    - Low-Intensity Markets:
+        - Africa and EMEA span wide country coverage but contribute limited revenue and orders.
+        - Broad presence doesn't translate to meaningful demand.
+    
+    - Minimal Contributor:
+        - Canada contributes minimally to both revenue and order volume.
+   ------------------------------------------------------------ */
 
+
+
+---------------------------------------------------------------
+-- MARKET REVENUE CONCENTRATION ORDER
+---------------------------------------------------------------
+
+-- Market ranking reference table
+SELECT
+    Market,
+    ROW_NUMBER() OVER(ORDER BY Total_Sales DESC) AS Rank_Order
+INTO #MarketRevenueOrder
+FROM (
+    SELECT
+        Market,
+        SUM(Sales) AS Total_Sales
+    FROM sales_transaction
+    GROUP BY Market
+) AS MarketOrder;
+
+
+
+/* ============================================================
+    PRODUCT DEMAND & MIX PERFORMANCE
+   ------------------------------------------------------------
+    - Evaluate product-level demand and sales mix contribution
+   ============================================================ */
+
+-- Category mix and revenue contribution per market
+WITH ProductMix AS (
+    SELECT
+        Market,
+        Category,
+        SUM(Sales) AS Total_Sales
+    FROM sales_transaction
+    GROUP BY
+        Market,
+        Category
+)
+
+-- Rank and percentage share of each category inside its market
+SELECT
+    PM.Market,
+    PM.Category,
+    FORMAT(PM.Total_Sales, 'N0') AS Revenue,
+    RANK() OVER(PARTITION BY PM.Market ORDER BY PM.Total_Sales DESC) AS Rank_in_Market,
+    FORMAT(
+        PM.Total_Sales/ NULLIF(SUM(PM.Total_Sales) OVER(PARTITION BY PM.Market), 0),'P2'
+    ) AS RevenueShare_in_Market_Pct
+FROM ProductMix as PM
+JOIN #MarketRevenueOrder AS MRO
+    ON PM.Market = MRO.Market
+ORDER BY 
+    MRO.Rank_Order;
+
+
+
+
+/* ------------------------------------------------------------
+    Findings
+   ------------------------------------------------------------
+    - Category Mix Structure:
+    	- Most markets show the top two categories at similar revenue share levels.
+    	- The third category drops substantially, with Canada showing the steepest decline.
+
+    - Dominant Category Presence:
+        - Technology ranks as the top category in most markets, including APAC, EU, US, EMEA, and Africa.
+        - This indicates Technology as the primary revenue driver across regions.
+
+    - Secondary Category Competition:
+        - Furniture and Office Supplies compete closely for the second position in most markets.
+        - Their relative rank varies by market, but revenue shares are often within a narrow range.
+
+    - Balanced Category Mix (US Positive Outlier):
+        - The US shows near-even revenue distribution across all three categories.
+        - No single category dominates, reducing reliance on one product line.
+   ------------------------------------------------------------ */
+
+
+
+/* ============================================================
+    PRICING & DISCOUNT SENSITIVITY
+   ------------------------------------------------------------
+    - Assess customer response to pricing and discount levels
+   ============================================================ */
+
+-- Discount level bucketing and market AOV
+WITH MarketSensitivity AS (
+    SELECT
+        Market,
+        Discount_Level,
+        COUNT(Market) AS Order_Cnt,
+        AVG(Sales) AS AOV
+    FROM (
+        SELECT
+            Market,
+            CASE
+                WHEN Discount > 0.50 THEN 'Aggressive'
+                WHEN Discount > 0.25 THEN 'High'
+                WHEN Discount > 0.10 THEN 'Medium'
+                WHEN Discount > 0 THEN 'Low'
+                ELSE 'No-Discount'
+            END AS Discount_Level,
+            Sales
+        FROM sales_transaction
+    ) AS DiscountLevels
+    GROUP BY
+        Market,
+        Discount_Level
+)     
+
+-- Cross-market discount response metrics
+SELECT
+    MS.Market,
+    MS.Discount_Level,
+    FORMAT(MS.Order_Cnt, 'N0') AS Order_Cnt,
+    FORMAT(
+        CAST(MS.Order_Cnt AS DECIMAL(18,4)) /
+        NULLIF(SUM(MS.Order_Cnt) OVER(PARTITION BY MS.Market), 0), 'P2'
+    ) AS Order_Pct,
+    FORMAT(MS.AOV, 'N0') AS AOV
+FROM MarketSensitivity AS MS
+JOIN #MarketRevenueOrder AS MRO
+    ON MS.Market = MRO.Market
+ORDER BY 
+    MRO.Rank_Order,
+    CASE
+        WHEN MS.Discount_Level = 'No-Discount' THEN 1
+        WHEN MS.Discount_Level = 'Low' THEN 2
+        WHEN MS.Discount_Level = 'Medium' THEN 3
+        WHEN MS.Discount_Level = 'High' THEN 4
+        WHEN MS.Discount_Level = 'Aggressive' THEN 5
+    END;
+
+
+/* ------------------------------------------------------------
+    Findings
+   ------------------------------------------------------------
+    - Core Markets Are Demand-Led (APAC, EU, US, LATAM):
+        - 67% to 86% of all orders occur at Medium or lower discount levels.
+        - AOV remains stable or peaks in Low/Moderate levels, not in heavy discount levels.
+        - High discounts lead to lower order spend, not premium order growth.
+        - Aggressive discounts represent a minor share of orders (0.4% to 8.5% depending on market).
+
+    - Split Price-Driven Buyers (EMEA & Africa):
+        - Majority of orders transact at No-Discount (67%–77%) with normal AOV ranges (199–202).
+        - A large secondary segment only buys at Aggressive discounts (22%–32%) with low AOV (58–78).
+
+    - Canada — Small Full-Price Niche Market:
+        - 100% of orders occur at No-Discount.
+   ------------------------------------------------------------ */
+
+
+
+/* ============================================================
+    FULFILLMENT & COST IMPACT ON DEMAND
+   ------------------------------------------------------------
+    - Examine how fulfillment cost and operational factors
+      influence demand
+   ============================================================ */
+
+-- Ship mode delivery records
+WITH ShippingDetails AS (
+    SELECT
+        ShipMode,
+        ShippingCost,
+        Quantity,
+        Sales,
+        DATEDIFF(DAY, OrderDate, ShipDate) AS Delivery_Days
+    FROM sales_transaction
+)
+
+-- Ship mode metric aggregation
+, ShippingMetrics AS (
+    SELECT
+        ShipMode,
+        COUNT(*) AS Order_Cnt,
+        AVG(ShippingCost) AS ShipCost_Avg,
+        AVG(Quantity) AS Quantity_Avg,
+        SUM(Quantity) AS Total_Quantity,
+        AVG(Sales) AS Sales_Avg,
+        SUM(Sales) AS Total_Sales,
+        MIN(Delivery_Days) AS DeliveryDays_Min,
+        AVG(Delivery_Days) AS DeliveryDays_Avg,
+        MAX(Delivery_Days) AS DeliveryDays_Max
+    FROM ShippingDetails
+    GROUP BY ShipMode
+    )
+
+-- Ship mode performance metrics
+SELECT
+    Shipmode,
+    DeliveryDays_Min,
+    DeliveryDays_Avg,
+    DeliveryDays_Max,
+    FORMAT(Order_Cnt, 'N0') AS Order_Cnt,
+    FORMAT(
+        CAST(Order_Cnt AS FLOAT) / NULLIF(SUM(Order_Cnt) OVER(), 0),'P2'
+    ) AS Order_Pct,
+    FORMAT(ShipCost_Avg, 'N0') AS ShipCost_Avg,
+    Quantity_Avg,
+    FORMAT(Total_Quantity, 'N0') AS Total_Quantity,
+    FORMAT(
+        CAST(Total_Quantity AS FLOAT) / NULLIF(SUM(Total_Quantity) OVER(), 0), 'P2'
+    ) AS Total_Quantity_Pct,
+    FORMAT(Sales_Avg, 'N0') AS Sales_Avg,
+    FORMAT(Total_Sales, 'N0') AS Total_Sales,
+    FORMAT(
+        Total_Sales / NULLIF(SUM(Total_Sales) OVER(), 0), 'P2'
+    ) AS Total_Sales_Pct
+FROM ShippingMetrics
+ORDER BY
+    CASE 
+        WHEN Shipmode = 'Same Day' THEN 1
+        WHEN Shipmode = 'First Class' THEN 2
+        WHEN Shipmode = 'Second Class' THEN 3
+        ELSE 4
+    END;
+
+
+
+/* ------------------------------------------------------------
+    Findings
+   ------------------------------------------------------------
+    -  Shipping Preference Is Cost-Led, Not Urgency-Led:
+      – 80% of all orders use slower, economy-focused shipping modes: 60% Standard Class and 20% Second Class
+
+    - Delivery Speed Does Not Influence Order Size or Spend:
+      – Average order value (244–249 AOV) and average order quantity (3 units) remain consistent across all ship modes
+
+    - Economy Modes Fall Within a 3–7 Day Delivery Window:
+      – Second Class and Standard Class deliver in 3–4 days on average, while Standard Class extends to 7 days at maximum
+   ------------------------------------------------------------ */
+
+
+
+/* ============================================================
+    Segment Contribution & Demand Quality
+   ------------------------------------------------------------
+    - Assess how demand and revenue are distributed across segments
+   ============================================================ */
+
+
+SELECT
+    segment,
+    SUM(sales) AS total_sales,
+    SUM(quantity) AS total_quantity
+
+FROM sales_transaction
+GROUP BY segment
+
+/* ------------------------------------------------------------
+    Findings
+   ------------------------------------------------------------
+    - Short Summary Findings
+   ------------------------------------------------------------ */
+
+
+/* ============================================================
+    END OF EXPLORATORY DATA ANALYSIS SCRIPT
+   ============================================================ */
