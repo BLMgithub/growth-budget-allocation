@@ -1,6 +1,6 @@
 /* ============================================================
     Project: E-Commerce Sales Optimization
-    File: 01_Data_Cleaning.sql
+    File: 01_data_cleaning.sql
     Author: Bryan Melvida
    
     Purpose:
@@ -13,7 +13,7 @@
    ============================================================ */
 
 
-USE Super_Store;
+USE global_stores_sales;
 
 
 /* ============================================================
@@ -23,32 +23,32 @@ USE Super_Store;
    ============================================================ */
 
 
-IF OBJECT_ID('Stores') IS NOT NULL DROP TABLE Stores;
+IF OBJECT_ID('sales_transaction') IS NOT NULL DROP TABLE sales_transaction;
 
-CREATE TABLE Stores (
-    RowID           INT NULL,
-    OrderID         NVARCHAR(70) NULL,
-    OrderDate       DATE NULL,
-    Shipdate        DATE NULL,
-    Shipmode        NVARCHAR(30) NULL,
-    CustomerID      NVARCHAR(30) NULL,
-    CustomerName    NVARCHAR(70) NULL,
-    Segment         NVARCHAR(30) NULL,
-    City            NVARCHAR(100) NULL,
-    State           NVARCHAR(100) NULL,
-    Country         NVARCHAR(100) NULL,
-    Market          NVARCHAR(30) NULL,
-    Region          NVARCHAR(30) NULL,
-    ProductID       NVARCHAR(100) NULL,
-    Category        NVARCHAR(30) NULL,
-    SubCategory     NVARCHAR(30) NULL,
-    ProductName     NVARCHAR(255) NULL,
-    Sales           DECIMAL(10,2) NULL,
-    Quantity        TINYINT NULL,
-    Discount        DECIMAL(5,3) NULL,
-    Profit          DECIMAL(10,2) NULL,
-    ShippingCost    Decimal(10,2) NULL,
-    OrderPriority   NVARCHAR(30) NULL
+CREATE TABLE sales_transaction (
+    row_id           INT NULL,
+    order_id         NVARCHAR(70) NULL,
+    order_date       DATE NULL,
+    ship_date        DATE NULL,
+    ship_mode        NVARCHAR(30) NULL,
+    customer_id      NVARCHAR(30) NULL,
+    customer_name    NVARCHAR(70) NULL,
+    segment          NVARCHAR(30) NULL,
+    city             NVARCHAR(100) NULL,
+    state            NVARCHAR(100) NULL,
+    country          NVARCHAR(100) NULL,
+    market           NVARCHAR(30) NULL,
+    region           NVARCHAR(30) NULL,
+    product_id       NVARCHAR(100) NULL,
+    category         NVARCHAR(30) NULL,
+    subcategory      NVARCHAR(30) NULL,
+    product_name     NVARCHAR(255) NULL,
+    sales            DECIMAL(10,2) NULL,
+    quantity         TINYINT NULL,
+    discount         DECIMAL(5,3) NULL,
+    profit           DECIMAL(10,2) NULL,
+    shipping_cost    Decimal(10,2) NULL,
+    order_priority   NVARCHAR(30) NULL
     );
 
 
@@ -59,7 +59,7 @@ CREATE TABLE Stores (
    ============================================================ */
 
 
-BULK INSERT Stores
+BULK INSERT sales_transaction
 FROM 'E:\E-Commerce-Sales-Optimization\data\raw\Global-Superstore.csv'
 WITH (
     FORMAT= 'CSV',
@@ -69,9 +69,9 @@ WITH (
     );
 
 
--- Verification
+-- verification
 SELECT TOP 10 *
-FROM Stores
+FROM sales_transaction
 ORDER BY NEWID();
 
 
@@ -82,44 +82,29 @@ ORDER BY NEWID();
     - Identify early red flags before deeper analysis
    ============================================================ */
 
+-- data profile summary
+DECLARE @profile_summary NVARCHAR(MAX);
 
-IF OBJECT_ID('tempdb..#DataInfo') IS NOT NULL DROP TABLE #DataInfo;
-
-CREATE TABLE #DataInfo(
-    ColumnName      NVARCHAR(100),
-    DataType        NVARCHAR(30),
-    NullCount       INT,
-    DistinctCount   INT
-);
-
-DECLARE @GetNulls_DistinctCount NVARCHAR(MAX);
-
-SELECT @GetNulls_DistinctCount = 
-    'INSERT INTO #DataInfo ' +
-    
+SELECT @profile_summary = 
     STRING_AGG(
         CAST(
             'SELECT 
-                ''' + name + ''' AS ColumnName,
-                '''+ DATA_TYPE +''' As DataType,
-                COUNT(CASE WHEN ' + name + ' IS NULL THEN 1 END) AS NullCount,
-                COUNT(DISTINCT ' + name +') AS DistinctCount
-             FROM Stores'
+                ''' + sys_col.name + ''' AS column_name, ' +
+                ''''+ info_col.DATA_TYPE +''' AS data_type, ' +
+                'COUNT(CASE WHEN ' + sys_col.name + ' IS NULL THEN 1 END) AS null_count, ' +
+                'COUNT(DISTINCT ' + sys_col.name +') AS count_distinct '+
+             'FROM sales_transaction'
                 AS NVARCHAR(MAX)), -- Prevents STRING_AGG error (8,000-byte limit)
             ' UNION ALL '
             )
-FROM sys.columns AS Syscol
-JOIN INFORMATION_SCHEMA.Columns as InfoCol
-    ON Syscol.name = InfoCol.COLUMN_NAME
-WHERE object_id = OBJECT_ID('Stores')
-    AND TABLE_NAME = 'Stores';
+FROM sys.columns AS sys_col
+JOIN INFORMATION_SCHEMA.Columns as info_col
+    ON sys_col.name = info_col.COLUMN_NAME
+WHERE sys_col.object_id = OBJECT_ID('sales_transaction')
+    AND info_col.TABLE_NAME = 'sales_transaction';
 
-EXEC(@GetNulls_DistinctCount);
+EXEC(@profile_summary);
 
-
--- Verification
-SELECT *
-FROM #DataInfo;
 
 
 /* ============================================================
@@ -129,42 +114,42 @@ FROM #DataInfo;
     - Validate ID to name relationships
    ============================================================ */
 
+-- duplicate detection
+DECLARE @duplicate_check NVARCHAR(MAX);
 
-DECLARE @GetDuplicates NVARCHAR(MAX);
-
-SELECT @GetDuplicates =
+SELECT @duplicate_check =
     'SELECT 
-        COUNT(*) AS DuplicateCounter,
+        COUNT(*) AS duplicate_counter,
         ' + STRING_AGG(QUOTENAME(name), ', ') + '
-    FROM Stores 
+    FROM sales_transaction 
     GROUP BY
         ' + STRING_AGG(QUOTENAME(name), ', ') + '
     HAVING COUNT(*) > 1'
 
 FROM sys.columns
-WHERE object_id = OBJECT_ID('Stores');
+WHERE object_id = OBJECT_ID('sales_transaction');
 
-EXEC(@GetDuplicates);
+EXEC(@duplicate_check);
 
 
--- CustomerID to CustomerName consistency
+-- customer_id to customer_name consistency
 SELECT
-    COUNT(DISTINCT CustomerName) AS Customer_DistinctCnt,
-    COUNT(DISTINCT CustomerID) AS CustomerID_DistinctCnt
-FROM Stores;
+    COUNT(DISTINCT customer_name) AS customer_count_distinct,
+    COUNT(DISTINCT customer_id) AS customer_id_count_distinct
+FROM sales_transaction;
 
--- ProductID to ProductName consistency
+-- product_id to product_name consistency
 SELECT
-    COUNT(DISTINCT ProductName) AS Product_DistinctCnt,
-    COUNT(DISTINCT ProductID) AS ProductID_DistinctCnt
-FROM Stores;
+    COUNT(DISTINCT product_name) AS product_count_distinct,
+    COUNT(DISTINCT product_id) AS product_id_count_distinct
+FROM sales_transaction;
 
 
 /* ------------------------------------------------------------
-    Findings
+    FINDINGS
    ------------------------------------------------------------
-    - CustomerID to CustomerName mismatches: 795 records
-    - ProductID to ProductName mismataches: 6,504 records
+    - customer_id to customer_name mismatches: 795 records
+    - product_id to product_name mismataches: 6,504 records
    ------------------------------------------------------------ */
 
 
@@ -172,66 +157,82 @@ FROM Stores;
 /* ============================================================
     HIERARCHY & DIMENSION VALIDATION
    ------------------------------------------------------------
-    - Validate Market to Country Relationships
+    - Validate Market to Country Hierarchies
     - Validate Category to SubCategory to Product Hierarchies
    ============================================================ */
 
 
--- Market to Country coverage
+---------------------------------------------------------------
+-- MARKET TO COUNTRY HIERARCHY COVERAGE
+---------------------------------------------------------------
+
+-- market distribution
 SELECT
-    Market,
-    COUNT(DISTINCT Country) AS Country_Cnt
-FROM Stores
-GROUP BY Market;
+    market,
+    COUNT(DISTINCT country) AS country_count
+FROM sales_transaction
+GROUP BY market;
 
--- Market to Country hierarchy consistency check
+
+-- market to region consistency check
 SELECT
-    COUNT(DISTINCT Country) AS Country_DistinctCnt,
-    COUNT(DISTINCT CONCAT(Market,Country)) AS MarketCountry_MapCnt
-FROM Stores;
+    DISTINCT(market),
+    region
+FROM sales_transaction
+ORDER BY market;
 
 
--- Category to SubCategory coverage
+-- market to country hierarchy consistency check
 SELECT
-    Category,
-    COUNT(DISTINCT SubCategory) AS SubCategory_Cnt
-FROM Stores
-GROUP BY Category;
+    COUNT(DISTINCT country) AS country_count_distinct,
+    COUNT(DISTINCT CONCAT(market,country)) AS market_country_map_count
+FROM sales_transaction;
 
--- Category to SubCategory hierarchy consistency check
+
+---------------------------------------------------------------
+-- CATEGORY TO PRODUCT NAME HIERARCHY COVERAGE
+---------------------------------------------------------------
+
+-- category distribution
 SELECT
-    COUNT(DISTINCT SubCategory) AS SubCat_DistinctCnt,
-    COUNT(DISTINCT CONCAT(Category, SubCategory)) AS CategorySubCat_MapCnt
-FROM Stores;
+    category,
+    COUNT(DISTINCT subcategory) AS subcategory_count
+FROM sales_transaction
+GROUP BY category;
 
-
--- SubCategory to Product coverage
+-- category to subcategory hierarchy consistency check
 SELECT
-    Category,
-    SubCategory,
-    COUNT(DISTINCT ProductName) AS ProductName_Cnt
-FROM Stores
+    COUNT(DISTINCT subcategory) AS subcategory_count_distinct,
+    COUNT(DISTINCT CONCAT(category, subcategory)) AS category_subcategory_map_count
+FROM sales_transaction;
+
+
+-- subcategory distribution
+SELECT
+    category,
+    subcategory,
+    COUNT(DISTINCT product_name) AS product_name_count
+FROM sales_transaction
 GROUP BY 
-    Category,
-    SubCategory
+    category,
+    subcategory
 ORDER BY 
-    Category,
-    ProductName_Cnt DESC;
+    category,
+    product_name_count DESC;
 
--- SubCategory to Product hierarchy consistency check
+-- subcategory to product hierarchy consistency check
 SELECT
-    COUNT(DISTINCT ProductName) AS Product_DistinctCnt,
-    COUNT(DISTINCT CONCAT(SubCategory, ProductName)) AS SubCatProduct_MapCnt
-FROM Stores;
+    COUNT(DISTINCT product_name) AS product_count_distinct,
+    COUNT(DISTINCT CONCAT(subcategory, product_name)) AS subcategory_product_map_count
+FROM sales_transaction;
 
 
 /* ------------------------------------------------------------
-    Findings
+    FINDINGS
    ------------------------------------------------------------
-    - Market to Country hierarchy inconsistency:
-      149 Market–Country combinations across 147 countries
-    - SubCategory to Product hierarchy inconsistency:
-      3,797 Sub-Category–Product combinations across 3,788 products
+    - market to region: Region reused as both macro and sub-market
+    - market to country: 149 Market–Country combinations across 147 countries
+    - subcategory to product_name: 3,797 Subcategory–Product combinations across 3,788 products
    ------------------------------------------------------------ */
 
 
@@ -243,155 +244,147 @@ FROM Stores;
    ============================================================ */
 
 
--- Identify continuous fields for range validation
-SELECT *
-FROM #DataInfo
-WHERE DataType != 'nvarchar';
-
--- Temporarly store Continuous Variables for range analysis
-SELECT ColumnName
-INTO #ContinuousVariables
-FROM #DataInfo
-WHERE ColumnName IN ('Sales','Quantity','Discount','Profit','ShippingCost');
+-- temporarly store continuous variables for range analysis
+SELECT column_name
+INTO #continuous_variables
+FROM (VALUES ('Sales'), ('Quantity'), ('Discount'), ('Profit'), ('ShippingCost')) AS list_to(column_name)
 
 -- Calculate Min, Avg, and  Max values for continuous variables
-DECLARE @GetMinMax NVARCHAR(MAX);
+DECLARE @summary_stats NVARCHAR(MAX);
 
-SELECT @GetMinMax =
+SELECT @summary_stats =
     STRING_AGG(
-        'SELECT ''' + name + ''' AS ColumnName,
-                MIN(' + name + ') AS MinValue,
-                AVG(' + name + ') AS AvgValue,
-                MAX(' + name + ') AS MaxValue
-         FROM Stores',
+        'SELECT ''' + name + ''' AS column_name,
+                MIN(' + name + ') AS min,
+                AVG(' + name + ') AS avg,
+                MAX(' + name + ') AS max
+         FROM sales_transaction',
         ' UNION ALL '
     )
-FROM sys.columns
-JOIN #ContinuousVariables
-  ON name = ColumnName
-WHERE object_id = OBJECT_ID('Stores');
+FROM sys.columns AS sys_col
+JOIN #continuous_variables AS CV
+  ON sys_col.name = CV.column_name
+WHERE object_id = OBJECT_ID('sales_transaction');
 
-EXEC(@GetMinMax);
+EXEC(@summary_stats);
 
 
 /* ------------------------------------------------------------
-    Findings
+    FINDINGS
    ------------------------------------------------------------
-    - Profit shows extreme negative values relative to sales
-      (-6,599.98 vs minimum sales of 0.44)
-    - Loss magnitudes suggest potential data or calculation issues
+    - Profit shows extreme negative values relative to sales (-6,599.98 vs minimum sales of 0.44)
    ------------------------------------------------------------ */
 
 
 /* ============================================================
     DATA QUALITY CORRECTIONS
    ------------------------------------------------------------
-    - Resolve Market to Country hierarchy issues
-    - Resolve SubCategory to Product hierarchy issues
+    - Enforce consistent Market–Country hierarchy
+    - Standardize SubCategory–Product mapping
    ============================================================ */
 
 
 ---------------------------------------------------------------
--- Market to Country Hierarchy Corrections
+-- ENFORCE MARKET TO COUNTRY HIERARCHY
 ---------------------------------------------------------------
 
--- Identify countries mapped to more than one market
+-- identify countries mapped to more than one market
 SELECT
-    Country,
-    COUNT(DISTINCT Market) AS Market_DistinctCount
-FROM Stores
+    country,
+    COUNT(DISTINCT market) AS market_count_distinct
+FROM sales_transaction
 GROUP BY
-    Country
+    country
 HAVING
-    COUNT(DISTINCT Market) > 1;
+    COUNT(DISTINCT market) > 1;
 
--- Review affected Market–Country combinations
+-- review affected market to country combinations
 SELECT
-    Country,
-    Market
-FROM Stores
-WHERE Country IN ('Austria', 'Mongolia')
+    country,
+    market
+FROM sales_transaction
+WHERE country IN ('Austria', 'Mongolia')
 GROUP BY
-    Country,
-    Market;
+    country,
+    market;
 
--- Prepare corrected Market mapping
+-- prepare corrected market mapping
 SELECT
-    RowID,
+    row_id,
     CASE
-        WHEN Country = 'Austria'  THEN 'EU'
-        WHEN Country = 'Mongolia' THEN 'APAC'
-    END AS CorrectMarket
-INTO #ToChangeMarketCountry
-FROM Stores
+        WHEN country = 'Austria'  THEN 'EU'
+        WHEN country = 'Mongolia' THEN 'APAC'
+    END AS correct_market
+INTO #market_to_country_map
+FROM sales_transaction
 WHERE
-    Market = 'EMEA'
-    AND Country IN ('Austria','Mongolia');
+    market = 'EMEA'
+    AND country IN ('Austria','Mongolia');
 
--- Apply Market to Country hierarchy corrections
+-- apply market to country hierarchy corrections
 BEGIN TRAN;
 
-UPDATE ST
+UPDATE sales_transaction
 SET
-    Market = MC.CorrectMarket
-FROM Stores AS ST
-JOIN #ToChangeMarketCountry AS MC
-    ON ST.RowID = MC.RowID;
+    market = MC.correct_market
+FROM sales_transaction AS ST
+JOIN #market_to_country_map AS MC
+    ON ST.row_id = MC.row_id;
 
 -- COMMIT;
 
 
 
 ---------------------------------------------------------------
--- SubCategory to Product Hierarchy Corrections
+-- STANDARDIZE SUBCATEGORY TO PRODUCT MAPPING
 ---------------------------------------------------------------
 
--- Identify products mapped to multiple SubCategories
-WITH Duplicates AS (
+-- identify products mapped to multiple subcategories
+WITH duplicates AS (
     SELECT
-        ProductName,
-        COUNT(DISTINCT SubCategory) AS SubCat_DistinctCnt
-    FROM Stores
+        product_name,
+        COUNT(DISTINCT subcategory) AS subcategory_count_distinct
+    FROM sales_transaction
     GROUP BY
-        ProductName
+        product_name
 )
 SELECT
-    ST.Category,
-    ST.SubCategory,
-    ST.ProductName
-FROM Stores AS ST
-JOIN Duplicates AS DU
-    ON ST.ProductName = DU.ProductName
+    ST.category,
+    ST.subcategory,
+    ST.product_name
+FROM sales_transaction AS ST
+JOIN duplicates AS DU
+    ON ST.product_name = DU.product_name
 WHERE
-    DU.SubCat_DistinctCnt > 1
+    DU.subcategory_count_distinct > 1
 GROUP BY
-    ST.Category,
-    ST.SubCategory,
-    ST.ProductName;
+    ST.category,
+    ST.subcategory,
+    ST.product_name;
 
--- Prepare corrected SubCategory and Category mapping
+-- prepare corrected subcategory and category mapping
 SELECT
-    RowID,
-    SubCategory,
-    ProductName,
-    'Fasteners'        AS CorrectSubCategory,
-    'Office Supplies'  AS CorrectCategory
-INTO #ToChangeSubCategoryProductName
-FROM Stores
+    row_id,
+    subcategory,
+    product_name,
+    'Fasteners' AS correct_subcategory,
+    'Office Supplies' AS correct_category
+INTO #subcategory_to_product_name_map
+FROM sales_transaction
 WHERE
-    ProductName = 'Staples'
-    AND SubCategory != 'Fasteners';
+    product_name = 'Staples'
+    AND subcategory != 'Fasteners';
 
--- Apply SubCategory to Product hierarchy corrections
+-- apply subcategory to product hierarchy corrections
 BEGIN TRAN;
 
-UPDATE ST
+UPDATE sales_transaction
 SET
-    SubCategory = SP.CorrectSubCategory,
-    Category    = SP.CorrectCategory
-FROM Stores AS ST
-JOIN #ToChangeSubCategoryProductName AS SP
-    ON SP.RowID = ST.RowID;
+    subcategory = SP.correct_subcategory,
+    category = SP.correct_category
+FROM sales_transaction AS ST
+JOIN #subcategory_to_product_name_map AS SP
+    ON SP.row_id = ST.row_id;
 
 -- COMMIT;
 
@@ -399,90 +392,110 @@ JOIN #ToChangeSubCategoryProductName AS SP
 
 
 /* ============================================================
-    DATA HANDLING DECISION
+    DATA QUALITY HANDLING DECISIONS
    ------------------------------------------------------------
-    - Handle CustomerID to CustomerName inconsistencies
-    - Handle ProductID to ProductName inconsistencies
-    - Handle suspicious Negative Profit records
+    - Evaluate Market to Region consistency
+    - Evaluate customer_id to customer_name consistency
+    - Evaluate product_id to product_name consistency
+    - Assess validity of Negative Profit records
    ============================================================ */
 
 
 ---------------------------------------------------------------
--- CustomerID to CustomerName Inconsistencies Corrections
+-- MARKET TO REGION CONSISTENCY CHECK
 ---------------------------------------------------------------
 
--- Identify CustomerNames mapped to multiple CustomerIDs and multiple Regions
+-- identify records where market is used in region
+SELECT 
+    DISTINCT(ST.market),
+    ST.region
+FROM sales_transaction AS ST
+WHERE ST.region IN (
+    SELECT DISTINCT market
+    FROM sales_transaction
+)
+ORDER BY
+    ST.market;
+
+
+
+---------------------------------------------------------------
+-- CUSTOMER_ID TO CUSTOMER_NAME CONSISTENCY CHECK
+---------------------------------------------------------------
+
+-- identify customer_names mapped to multiple customer_ids and multiple regions
 SELECT
-    CustomerName,
-    COUNT(DISTINCT CustomerID) AS CustomerID_DistinctCnt,
-    COUNT(DISTINCT Region) AS CustomerRegion_DistinctCnt
-FROM Stores
-GROUP BY CustomerName;
+    customer_name,
+    COUNT(DISTINCT customer_id) AS customer_id_count_distinct,
+    COUNT(DISTINCT region) AS registered_region_count_distinct
+FROM sales_transaction
+GROUP BY customer_name;
 
 
 
 ---------------------------------------------------------------
--- ProductID to ProductName Inconsistencies Corrections
+-- PRODUCT_ID TO PRODUCT_NAME CONSISTENCY CHECK
 ---------------------------------------------------------------
 
--- Identify ProductNames mapped to multiple ProductIDs
+-- identify product_name mapped to multiple product_id
 SELECT
-    ProductName,
-    COUNT(DISTINCT ProductID) AS ProductID_DistinctCnt
-FROM Stores
-GROUP BY ProductName
-HAVING COUNT(DISTINCT ProductID) > 1;
+    product_name,
+    COUNT(DISTINCT product_id) AS product_id_count_distinct
+FROM sales_transaction
+GROUP BY product_name
+HAVING COUNT(DISTINCT product_id) > 1;
 
 
 ---------------------------------------------------------------
--- Suspicious Negative Profit Handling
+-- NEGATIVE PROFIT ASSESSMENT
 ---------------------------------------------------------------
 
--- Identify Records with Negative Profit
+-- identify records with negative profit
 SELECT *
-FROM Stores
-WHERE Profit < 0
-ORDER BY Profit ASC;
+FROM sales_transaction
+WHERE profit < 0
+ORDER BY profit ASC;
 
 
--- Assess magnitude and persistence of negative Profit
-WITH NegativeProfit AS (
+-- assess magnitude and persistence of negative profit
+WITH negative_profit_records AS (
     SELECT 
-        YEAR(OrderDate) as OrderYear,
-        SUM(Profit) AS NegativeProfit
-    FROM Stores
-    WHERE Profit < 0
-    GROUP BY YEAR(OrderDate)
-),
-PositiveProfit AS (
+        YEAR(order_date) as order_year,
+        SUM(profit) AS negative_profit
+    FROM sales_transaction
+    WHERE profit < 0
+    GROUP BY YEAR(order_date)
+)
+,positive_profit_records AS (
     SELECT 
-        YEAR(OrderDate) as OrderYear, 
-        SUM(Profit) AS PositiveProfit
-    FROM Stores
-    WHERE Profit > 0
-    GROUP BY YEAR(OrderDate)
+        YEAR(order_date) as order_year, 
+        SUM(profit) AS positive_profit
+    FROM sales_transaction
+    WHERE profit > 0
+    GROUP BY YEAR(order_date)
 )
 SELECT
-    NP.OrderYear,
-    FORMAT(NP.NegativeProfit, 'N0') AS NegativeProfit,
-    FORMAT(PP.PositiveProfit, 'N0') AS PositiveProfit,
-    FORMAT(ABS(NP.NegativeProfit) / PP.PositiveProfit, 'P2')
-        AS NegativeToPositiveRatio
-FROM NegativeProfit NP
-JOIN PositiveProfit PP
-  ON NP.OrderYear = PP.OrderYear
-ORDER BY NP.OrderYear;
+    NP.order_year,
+    FORMAT(NP.negative_profit, 'N0') AS negative_profit,
+    FORMAT(PP.positive_profit, 'N0') AS positive_profit,
+    FORMAT(
+        ABS(NP.negative_profit) / PP.positive_profit, 'P2'
+    ) AS negative_positive_ratio
+FROM negative_profit_records AS NP
+JOIN positive_profit_records AS PP
+  ON NP.order_year = PP.order_year
+ORDER BY NP.order_year;
 
 
 
-/* ============================================================
-    DATA HANDLING DECISION
+/* ------------------------------------------------------------
+    DATA HANDLING OUTCOMES
    ------------------------------------------------------------
-    - CustomerName excluded due to non-unique CustomerID mapping
-    - ProductID ignored; ProductName retained for analysis
-    - Profit excluded from KPI analysis due to unexplained
-      extreme and persistent negative values
-   ============================================================ */
+    - Region excluded due to non-fixable hierarchy inconsistencies
+    - customer_name excluded due to non-unique customer_id mapping
+    - product_id excluded due to non-unique product_name mapping
+    - Profit excluded from KPI analysis due to unexplained extreme and persistent negative values
+   ------------------------------------------------------------ */
 
 
 /* ============================================================
