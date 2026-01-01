@@ -22,36 +22,36 @@ USE global_store_sales
     - Assess how demand and revenue are distributed across markets
    ============================================================ */
 
--- Market-level demand concentration metrics
-WITH MarketPerformance AS (
+-- market-level demand concentration metrics
+WITH market_performance AS (
     SELECT
-        Market,
-        COUNT(DISTINCT Country) AS Country_Cnt,
-        SUM(Sales) AS Total_Sales,
-        COUNT(OrderDate) AS Total_Order,
-        SUM(Sales) / NULLIF(COUNT(OrderDate), 0) AS AOV,
-        SUM(Sales) / NULLIF(SUM(SUM(Sales)) OVER(),0) AS Sales_Pct
+        market,
+        COUNT(DISTINCT country) AS country_count,
+        SUM(sales) AS total_sales,
+        COUNT(order_date) AS total_order,
+        AVG(sales) AS AOV,
+        SUM(sales) / NULLIF(SUM(SUM(sales)) OVER(),0) AS sales_pct
     FROM sales_transaction
-    GROUP BY Market
+    GROUP BY market
 )
 
--- Metrics for cross-market comparison
+-- metrics for cross-market comparison
 SELECT
-    Market,
-    Country_Cnt AS Country_Coverage,
-    FORMAT(Total_Sales / 1e6, 'N2') + ' M' AS Revenue_M,
-    FORMAT(Sales_Pct, 'P2') AS Market_Revenue_Pct,
-    FORMAT(Total_Order, 'N0') AS Order_Cnt,
+    market,
+    country_count AS country_count,
+    FORMAT(total_sales / 1e6, 'N2') AS 'revenue(M)',
+    FORMAT(sales_pct, 'P2') AS market_revenue_pct,
+    FORMAT(total_order, 'N0') AS order_count,
     FORMAT(AOV, 'N2') AS AOV,
-    FORMAT((Total_Sales / Country_Cnt) / 1e6, 'N2') + ' M' AS 'Country_Revenue(Avg)',
-    FORMAT(Total_Order / Country_Cnt, 'N0') AS 'Country_Orders(Avg)'
-FROM MarketPerformance
-ORDER BY Total_Sales DESC;
+    FORMAT((total_sales / country_count) / 1e6, 'N2') AS 'avg_country_revenue(M)',
+    FORMAT(total_order / country_count, 'N0') AS 'country_orders'
+FROM market_performance
+ORDER BY total_sales DESC;
 
 
 
 /* ------------------------------------------------------------
-    Findings
+    FINDINGS
    ------------------------------------------------------------
     - Revenue Concentration:
         - APAC, EU, US, and LATAM collectively account for ~87% of total revenue.
@@ -63,7 +63,7 @@ ORDER BY Total_Sales DESC;
     
     - Demand-Dense Market:
         - The US delivers revenue comparable to multi-country markets from a single country.
-        - Driven by high order concentration and strong per-country demand.
+        - Driven by high order concentration.
     
     - Low-Intensity Markets:
         - Africa and EMEA span wide country coverage but contribute limited revenue and orders.
@@ -79,18 +79,18 @@ ORDER BY Total_Sales DESC;
 -- MARKET REVENUE CONCENTRATION ORDER
 ---------------------------------------------------------------
 
--- Market ranking reference table
+-- market ranking reference table
 SELECT
-    Market,
-    ROW_NUMBER() OVER(ORDER BY Total_Sales DESC) AS Rank_Order
-INTO #MarketRevenueOrder
+    market,
+    ROW_NUMBER() OVER(ORDER BY total_sales DESC) AS rank_order
+INTO #market_revenue_order
 FROM (
     SELECT
-        Market,
-        SUM(Sales) AS Total_Sales
+        market,
+        SUM(sales) AS total_sales
     FROM sales_transaction
-    GROUP BY Market
-) AS MarketOrder;
+    GROUP BY market
+) AS market_order;
 
 
 
@@ -100,38 +100,38 @@ FROM (
     - Evaluate product-level demand and sales mix contribution
    ============================================================ */
 
--- Category mix and revenue contribution per market
-WITH ProductMix AS (
+-- category mix and revenue contribution per market
+WITH product_mix AS (
     SELECT
-        Market,
-        Category,
-        SUM(Sales) AS Total_Sales
+        market,
+        category,
+        SUM(sales) AS total_sales
     FROM sales_transaction
     GROUP BY
-        Market,
-        Category
+        market,
+        category
 )
 
--- Rank and percentage share of each category inside its market
+-- rank and percentage share of each category inside its market
 SELECT
-    PM.Market,
-    PM.Category,
-    FORMAT(PM.Total_Sales, 'N0') AS Revenue,
-    RANK() OVER(PARTITION BY PM.Market ORDER BY PM.Total_Sales DESC) AS Rank_in_Market,
+    PM.market,
+    PM.category,
+    FORMAT(PM.total_sales, 'N0') AS revenue,
+    RANK() OVER(PARTITION BY PM.market ORDER BY PM.total_sales DESC) AS rank_in_market,
     FORMAT(
-        PM.Total_Sales/ NULLIF(SUM(PM.Total_Sales) OVER(PARTITION BY PM.Market), 0),'P2'
-    ) AS RevenueShare_in_Market_Pct
-FROM ProductMix as PM
-JOIN #MarketRevenueOrder AS MRO
-    ON PM.Market = MRO.Market
+        PM.total_sales/ NULLIF(SUM(PM.total_sales) OVER(PARTITION BY PM.market), 0),'P2'
+    ) AS market_category_revenue_pct
+FROM product_mix as PM
+JOIN #market_revenue_order AS MRO
+    ON PM.market = MRO.market
 ORDER BY 
-    MRO.Rank_Order;
+    MRO.rank_order;
 
 
 
 
 /* ------------------------------------------------------------
-    Findings
+    FINDINGS
    ------------------------------------------------------------
     - Category Mix Structure:
     	- Most markets show the top two categories at similar revenue share levels.
@@ -158,57 +158,57 @@ ORDER BY
     - Assess customer response to pricing and discount levels
    ============================================================ */
 
--- Discount level bucketing and market AOV
-WITH MarketSensitivity AS (
+-- discount level bucketing and market AOV
+WITH market_sensitivity AS (
     SELECT
-        Market,
-        Discount_Level,
-        COUNT(Market) AS Order_Cnt,
-        AVG(Sales) AS AOV
+        market,
+        discount_Level,
+        COUNT(market) AS order_count,
+        AVG(sales) AS AOV
     FROM (
         SELECT
-            Market,
+            market,
             CASE
-                WHEN Discount > 0.50 THEN 'Aggressive'
-                WHEN Discount > 0.25 THEN 'High'
-                WHEN Discount > 0.10 THEN 'Medium'
-                WHEN Discount > 0 THEN 'Low'
+                WHEN discount > 0.50 THEN 'Aggressive'
+                WHEN discount > 0.25 THEN 'High'
+                WHEN discount > 0.10 THEN 'Medium'
+                WHEN discount > 0 THEN 'Low'
                 ELSE 'No-Discount'
-            END AS Discount_Level,
-            Sales
+            END AS discount_level,
+            sales
         FROM sales_transaction
-    ) AS DiscountLevels
+    ) AS dicount_tier
     GROUP BY
-        Market,
-        Discount_Level
+        market,
+        discount_level
 )     
 
--- Cross-market discount response metrics
+-- cross-market discount response metrics
 SELECT
-    MS.Market,
-    MS.Discount_Level,
-    FORMAT(MS.Order_Cnt, 'N0') AS Order_Cnt,
+    MS.market,
+    MS.discount_level,
+    FORMAT(MS.order_count, 'N0') AS order_count,
     FORMAT(
-        CAST(MS.Order_Cnt AS DECIMAL(18,4)) /
-        NULLIF(SUM(MS.Order_Cnt) OVER(PARTITION BY MS.Market), 0), 'P2'
-    ) AS Order_Pct,
+        CAST(MS.order_count AS DECIMAL(18,4)) /
+        NULLIF(SUM(MS.order_count) OVER(PARTITION BY MS.market), 0), 'P2'
+    ) AS order_pct,
     FORMAT(MS.AOV, 'N0') AS AOV
-FROM MarketSensitivity AS MS
-JOIN #MarketRevenueOrder AS MRO
-    ON MS.Market = MRO.Market
+FROM market_sensitivity AS MS
+JOIN #market_revenue_order AS MRO
+    ON MS.market = MRO.market
 ORDER BY 
-    MRO.Rank_Order,
+    MRO.rank_order,
     CASE
-        WHEN MS.Discount_Level = 'No-Discount' THEN 1
-        WHEN MS.Discount_Level = 'Low' THEN 2
-        WHEN MS.Discount_Level = 'Medium' THEN 3
-        WHEN MS.Discount_Level = 'High' THEN 4
-        WHEN MS.Discount_Level = 'Aggressive' THEN 5
+        WHEN MS.discount_level = 'No-Discount' THEN 1
+        WHEN MS.discount_level = 'Low' THEN 2
+        WHEN MS.discount_level = 'Medium' THEN 3
+        WHEN MS.discount_level = 'High' THEN 4
+        WHEN MS.discount_level = 'Aggressive' THEN 5
     END;
 
 
 /* ------------------------------------------------------------
-    Findings
+    FINDINGS
    ------------------------------------------------------------
     - Core Markets Are Demand-Led (APAC, EU, US, LATAM):
         - 67% to 86% of all orders occur at Medium or lower discount levels.
@@ -217,10 +217,10 @@ ORDER BY
         - Aggressive discounts represent a minor share of orders (0.4% to 8.5% depending on market).
 
     - Split Price-Driven Buyers (EMEA & Africa):
-        - Majority of orders transact at No-Discount (67%–77%) with normal AOV ranges (199–202).
-        - A large secondary segment only buys at Aggressive discounts (22%–32%) with low AOV (58–78).
+        - Majority of orders transact at No-Discount (67%-77%) with normal AOV ranges (199-202).
+        - A large secondary segment only buys at Aggressive discounts (22%-32%) with low AOV (58-78).
 
-    - Canada — Small Full-Price Niche Market:
+    - Small Full-Price Niche Market (Canada):
         - 100% of orders occur at No-Discount.
    ------------------------------------------------------------ */
 
@@ -233,77 +233,58 @@ ORDER BY
       influence demand
    ============================================================ */
 
--- Ship mode delivery records
-WITH ShippingDetails AS (
+-- ship mode delivery records
+WITH shipping_details AS (
     SELECT
-        ShipMode,
-        ShippingCost,
-        Quantity,
-        Sales,
-        DATEDIFF(DAY, OrderDate, ShipDate) AS Delivery_Days
+        market,
+        ship_mode,
+        COUNT(*) AS order_count,
+        AVG(shipping_cost) AS ship_cost_avg,
+        AVG(quantity) AS quantity_avg,
+        SUM(sales) AS total_sales,
+        AVG(DATEDIFF(DAY, order_date, ship_date)) AS delivery_days_avg
     FROM sales_transaction
+    GROUP BY 
+        market,
+        ship_mode
 )
-
--- Ship mode metric aggregation
-, ShippingMetrics AS (
-    SELECT
-        ShipMode,
-        COUNT(*) AS Order_Cnt,
-        AVG(ShippingCost) AS ShipCost_Avg,
-        AVG(Quantity) AS Quantity_Avg,
-        SUM(Quantity) AS Total_Quantity,
-        AVG(Sales) AS Sales_Avg,
-        SUM(Sales) AS Total_Sales,
-        MIN(Delivery_Days) AS DeliveryDays_Min,
-        AVG(Delivery_Days) AS DeliveryDays_Avg,
-        MAX(Delivery_Days) AS DeliveryDays_Max
-    FROM ShippingDetails
-    GROUP BY ShipMode
-    )
-
--- Ship mode performance metrics
+-- ship mode performance metrics
 SELECT
-    Shipmode,
-    DeliveryDays_Min,
-    DeliveryDays_Avg,
-    DeliveryDays_Max,
-    FORMAT(Order_Cnt, 'N0') AS Order_Cnt,
+    SD.market,
+    ship_mode,
+    delivery_days_avg,
+    FORMAT(order_count, 'N0') AS total_order_count,
     FORMAT(
-        CAST(Order_Cnt AS FLOAT) / NULLIF(SUM(Order_Cnt) OVER(), 0),'P2'
-    ) AS Order_Pct,
-    FORMAT(ShipCost_Avg, 'N0') AS ShipCost_Avg,
-    Quantity_Avg,
-    FORMAT(Total_Quantity, 'N0') AS Total_Quantity,
+        CAST(order_count AS FLOAT) / NULLIF(SUM(order_count) OVER(PARTITION BY SD.market), 0),'P2'
+    ) AS total_orders_pct,
+    FORMAT(ship_cost_avg, 'N0') AS ship_cost_avg,
+    quantity_avg,
+    FORMAT(total_sales, 'N0') AS revenue,
     FORMAT(
-        CAST(Total_Quantity AS FLOAT) / NULLIF(SUM(Total_Quantity) OVER(), 0), 'P2'
-    ) AS Total_Quantity_Pct,
-    FORMAT(Sales_Avg, 'N0') AS Sales_Avg,
-    FORMAT(Total_Sales, 'N0') AS Total_Sales,
-    FORMAT(
-        Total_Sales / NULLIF(SUM(Total_Sales) OVER(), 0), 'P2'
-    ) AS Total_Sales_Pct
-FROM ShippingMetrics
+        total_sales / NULLIF(SUM(total_sales) OVER(PARTITION BY SD.market), 0), 'P2'
+    ) AS revenue_pct
+FROM shipping_details AS SD
+JOIN #market_revenue_order AS MRO
+    ON SD.market = MRO.market
 ORDER BY
+    MRO.rank_order,
     CASE 
-        WHEN Shipmode = 'Same Day' THEN 1
-        WHEN Shipmode = 'First Class' THEN 2
-        WHEN Shipmode = 'Second Class' THEN 3
+        WHEN ship_mode = 'Same Day' THEN 1
+        WHEN ship_mode = 'First Class' THEN 2
+        WHEN ship_mode = 'Second Class' THEN 3
         ELSE 4
     END;
 
 
 
 /* ------------------------------------------------------------
-    Findings
+    FINDINGS
    ------------------------------------------------------------
     -  Shipping Preference Is Cost-Led, Not Urgency-Led:
-      – 80% of all orders use slower, economy-focused shipping modes: 60% Standard Class and 20% Second Class
-
-    - Delivery Speed Does Not Influence Order Size or Spend:
-      – Average order value (244–249 AOV) and average order quantity (3 units) remain consistent across all ship modes
-
-    - Economy Modes Fall Within a 3–7 Day Delivery Window:
-      – Second Class and Standard Class deliver in 3–4 days on average, while Standard Class extends to 7 days at maximum
+      - Standard Class takes 60% of orders and ~60% of revenue in APAC, EU, US, LATAM
+      - Same Day stays 5% order share in core markets.
+      - Quantity avg is consistent across modes (2-3 units) across all modes.
+      - Markets consistently avoid higher-cost faster modes.
    ------------------------------------------------------------ */
 
 
@@ -312,19 +293,72 @@ ORDER BY
     Segment Contribution & Demand Quality
    ------------------------------------------------------------
     - Assess how demand and revenue are distributed across segments
+    - Check how much segments rely on heavy promotions
+    - Measure segment tolerance to shipping cost pressure
    ============================================================ */
 
-
+-- Segment contribution  (market level)
+WITH segment_contribution AS (
+    SELECT
+        market,
+        segment,
+        AVG(sales) AS avg_sales,
+        SUM(sales) AS total_sales,
+        SUM(sales) / NULLIF(SUM(SUM(sales)) OVER(PARTITION BY market), 0) AS sales_pct,
+        COUNT(*) AS total_order,
+        CAST(COUNT(*) AS FLOAT) / NULLIF(SUM(COUNT(*)) OVER(PARTITION BY market), 0) as order_pct
+    FROM sales_transaction
+    GROUP BY
+        market,
+        segment
+)
 SELECT
-    segment,
-    SUM(sales) AS total_sales,
-    SUM(quantity) AS total_quantity
+    SC.market,
+    SC.segment,
+    FORMAT(SC.avg_sales, 'N0') AS AOV,
+    FORMAT(SC.total_sales, 'N0') AS revenue,
+    FORMAT(SC.sales_pct, 'P2') AS segment_revenue_pct,
+    FORMAT(SC.total_order, 'N0') as total_order,
+    FORMAT(SC.order_pct, 'P2') AS segment_order_pct
+FROM segment_contribution AS SC
+JOIN #market_revenue_order AS MRO
+    ON SC.market = MRO.market
+ORDER BY 
+    MRO.rank_order,
+    CASE
+        WHEN SC.segment = 'Corporate' THEN 1
+        WHEN SC.segment = 'Home Office' THEN 2
+        ELSE 3
+    END;
 
-FROM sales_transaction
-GROUP BY segment
+
+/**
+FINDINGS:
+ - Demand Concentration Pattern:
+  - Consumer segment drives 50-54% of revenue consistently across ALL markets
+  - Corporate contributes 26-31%, Home Office 16-19%
+  - This pattern holds regardless of market geography or maturity
+
+ - Segment Spending Behavior:
+  - AOV differences between segments are marginal across all markets (differences of 0.6%-3.5%)
+ 
+ - Premium segments show regional clustering: 
+  - APAC/US pair on Home Office, LATAM/Canada pair on Consumer, while EU and EMEA/Africa show distinct patterns
+**/
+
+-- Market Promo-dependency (demand quality)
+
+
+
+
+-- Shipping cost tolerance (market view)
+
+
+
+
 
 /* ------------------------------------------------------------
-    Findings
+    FINDINGS
    ------------------------------------------------------------
     - Short Summary Findings
    ------------------------------------------------------------ */

@@ -3,9 +3,9 @@
 
 **Doc Scope:** Field-level documentation of data quality issues, corrections, and data handling decisions applied during preprocessing.
 
-**Related script:** [`01_Data_Cleaning.sql`](../sql/scripts/01_Data_Cleaning.sql)
+**Related script:** [`01_data_cleaning.sql`](../sql/scripts/01_data_cleaning.sql)
 
-**Output dataset:** [`Stores.csv`](../data/processed/Stores.csv)
+**Output dataset:** [`sales_transaction.csv`](../data/processed/sales_transaction.csv)
 
 | Field Name   | Issue Identified                                       | Action Taken                        | Notes                                                               |
 | ------------ | ------------------------------------------------------ | ----------------------------------- | ------------------------------------------------------------------- |
