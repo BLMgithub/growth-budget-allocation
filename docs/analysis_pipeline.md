@@ -3,28 +3,27 @@
 
 
 ## [01_data_cleaning.sql](../sql/scripts/01_data_cleaning.sql)
-**Purpose:** Ingest raw data and run early quality checks before analysis.
+**Purpose:** Prepare analysis-ready data by validating structure, integrity, and consistency, and isolating data quality issues that would invalidate downstream analysis.
 
-| Section                          | Intent                                                   |
-| -------------------------------- | -------------------------------------------------------- |
-| Raw Data Ingestion               | Create staging tables for raw data storage               |
-| Data Load                        | Import source CSV data into staging                      |
-| Data Profiling & Structure Audit | Assess column completeness and uniqueness                |
-| Duplicate & Key Consistency      | Detect duplicate records and key conflicts               |
-| Hierarchy & Dimension Validation | Validate hierarchical field consistency                  |
-| Continuous Variable Validation   | Verify ranges, distributions, and invalid numeric values |
-| Data Corrections                 | Enforce consistency and standardize mappings             |
-| Data Quality Handling            | Assess unfixable or irrecoverable data quality issues    |
+| Section | Intent |
+| --- | --- |
+| Raw Data Ingestion | Provision staging tables for raw data persistence |
+| Data Load | Load source CSV data into staging environment |
+| Data Profiling & Structure Audit | Measure column completeness and uniqueness integrity |
+| Duplicate & Key Consistency | Identify duplicate records and key collisions |
+| Hierarchy & Dimension Validation | Validate hierarchical field coherence |
+| Continuous Variable Validation | Validate numeric validity, range constraints, and distribution shape |
+| Data Corrections | Normalize mappings and enforce dimensional consistency |
+| Data Quality Handling | Classify irrecoverable data quality conditions |
 
 
 ## [02_exploratory_data_analysis.sql](../sql/scripts/02_exploratory_data_analysis.sql)
-**Purpose:** Analyze demand behavior, product mix, pricing sensitivity, fulfillment cost effects, growth signals, and segment contribution.
+**Purpose:** To determine where growth is driven by real demand versus incentives or cost effects, and to guide investment prioritization across markets, products, pricing, and segments.
 
-| Section                                          | Intent                                                       |
-| ------------------------------------------------ | ------------------------------------------------------------ |
-| Demand Concentration & Market Share Contribution | Assess how demand and revenue are distributed across markets |
-| Product Demand & Mix Performance                 | Evaluate product-level demand and sales mix contribution     |
-| Pricing & Discount Sensitivity                   | Measure demand response to pricing and discount changes      |
-| Fulfillment & Cost Impact on Demand              | Evaluate how delivery performance and cost influence demand  |
-| Growth Signals & Opportunity Gaps                | Detect emerging growth trends and unmet market opportunities |
-| Segment Contribution & Demand Quality            | Assess segment demand reliability and business impact        |
+| Section | Intent |
+| --- | --- |
+| Market Demand Concentration & Growth Weighting | Prioritize markets by growth contribution |
+| Category Demand Mix & Investment Relevance | Guide product investment via category demand mix |
+| Pricing & Discount-Driven Demand Dynamics | Define discounting as a stimulator vs sustainer of demand |
+| Fulfillment Cost & Demand Structure | Attribute demand shape to shipping cost pressure |
+| Segment Contribution & Demand Quality Profile | Quantify segment value, validate promo dependence, and measure fulfillment cost sensitivity |
