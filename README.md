@@ -32,8 +32,7 @@ change allocation decisions.
 - Distinguish structural demand drivers from incentive-driven levers
 - Define conditions under which deploying the $3M budget would create unacceptable risk or future regret
 
-> Executive deliverable (decision narrative + recommendations):  
-> _Website version in progress_
+> Executive deliverable (decision narrative + recommendations): [`Executive decision summary (Website)`](https://bryan-melvida.gitbook.io/portfolio/projects/usd3m-growth-budget-decision-screen)
 
 ---
 
@@ -47,25 +46,26 @@ change allocation decisions.
 
 ## Repository structure
 - `data/`
-  - `raw/` — original source data
-  - `processed/` — cleaned and validated data
-  - `exported_tables/` — reporting-ready extracts
+  - `raw/` - original source data
+  - `processed/` - cleaned and validated data
+  - `exported_tables/` - reporting-ready extracts
 
 - `sql/scripts/`
-  - `01_data_cleaning.sql` — data validation and corrections
-  - `02_exploratory_data_analysis.sql` — decision-gated analysis
-  - `03_reporting_extract.sql` — final reporting outputs
+  - `01_data_cleaning.sql` - data validation and corrections
+  - `02_exploratory_data_analysis.sql` - decision-gated analysis
+  - `03_reporting_extract.sql` - final reporting outputs
 
 - `docs/`
-  - `analysis_decision_blueprint.md` — decision framework and gates
-  - `analysis_pipeline.md` — analytical flow and logic
-  - `data_dictionary.md` — field definitions
-  - `preprocessing_log.md` — data handling decisions
+  - `analysis_decision_blueprint.md` - decision framework and evaluation structure
+  - `analysis_pipeline.md` - analytical flow and logic
+  - `data_dictionary.md` - field definitions
+  - `preprocessing_log.md` - data handling decisions
+  - `decision_gate_rationale.md` - decision constraints and growth narratives ruled out
 
 - `power_bi/`
-  - `artifacts/` —  exported decision artifacts (PDF and images)
-    - `images/` — exported image previews of decision pages
-  - `reports/` — Power BI reports and model files (PBIX)
+  - `artifacts/` -  exported decision artifacts (PDF and images)
+    - `images/` - exported image previews of decision pages
+  - `reports/` - Power BI reports and model files (PBIX)
 
 ---
 
