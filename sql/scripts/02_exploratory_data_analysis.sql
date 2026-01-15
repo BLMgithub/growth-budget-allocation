@@ -3,9 +3,13 @@
     File: 02_exploratory_data_analysis.sql
     Author: Bryan Melvida
    
+    Problem Constrained EDA:
+    Decision scoped analysis used to eliminate signals,
+    not discover new problem directions.
+
     Purpose:
     - Apply demand and viability checks for budget allocation
-    - Surface candidate signals that could actually move the decision
+    - Surface decision-relevant candidate signals that can move the decision
     - Kill narratives that don’t scale or rely on incentives
     - Produce inputs for synthesis, not conclusions
    ============================================================ */
