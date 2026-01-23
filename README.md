@@ -38,7 +38,7 @@ change allocation decisions.
 
 ## Deliverables
 - **Decision narrative report** (Power BI, exported as static PDF)
-- **Executive summary** (website format, WIP)
+- **Executive summary** (website format)
 - **SQL analysis pipeline** supporting all conclusions
 - **Documented assumptions, preprocessing decisions, and exclusions**
 
