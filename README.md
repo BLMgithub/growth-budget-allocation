@@ -56,7 +56,7 @@ change allocation decisions.
   - `03_reporting_extract.sql` - final reporting outputs
 
 - `docs/`
-  - `analysis_decision_blueprint.md` - decision framework and evaluation structure
+  - `decision_logs.md` - decision framework and evaluation structure
   - `analysis_pipeline.md` - analytical flow and logic
   - `data_dictionary.md` - field definitions
   - `preprocessing_log.md` - data handling decisions
