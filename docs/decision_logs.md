@@ -1,4 +1,4 @@
-# Analysis Decision Blueprint
+# Decision Logs (ODS)
 
 **Related script:** [`02_exploratory_data_analysis`](../sql/scripts/02_exploratory_data_analysis.sql)
 
